@@ -6,6 +6,9 @@ export interface AppConfig {
   apiPrefix: string;
   corsOrigins: string[];
   swaggerEnabled: boolean;
+  refreshCookieName: string;
+  cookieSecure: boolean;
+  cookieSameSite: 'lax' | 'strict' | 'none';
 }
 
 export default registerAs(
@@ -19,5 +22,9 @@ export default registerAs(
       .map((origin) => origin.trim())
       .filter(Boolean),
     swaggerEnabled: process.env.SWAGGER_ENABLED === 'true',
+    refreshCookieName: process.env.REFRESH_COOKIE_NAME ?? 'alira_refresh',
+    cookieSecure: process.env.COOKIE_SECURE === 'true',
+    cookieSameSite:
+      (process.env.COOKIE_SAME_SITE as AppConfig['cookieSameSite']) ?? 'lax',
   }),
 );

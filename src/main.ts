@@ -2,6 +2,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import * as cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import type { AppConfig } from './config/app.config';
@@ -12,6 +13,7 @@ async function bootstrap(): Promise<void> {
   const config = configService.getOrThrow<AppConfig>('app');
 
   app.use(helmet());
+  app.use(cookieParser());
   app.enableCors({
     origin: config.corsOrigins,
     credentials: true,
@@ -31,6 +33,8 @@ async function bootstrap(): Promise<void> {
       .setTitle('Alira API')
       .setDescription('REST API for the Alira personal finance tracker')
       .setVersion('0.1.0')
+      .addBearerAuth()
+      .addCookieAuth(config.refreshCookieName)
       .build();
     const document = SwaggerModule.createDocument(app, swaggerConfig);
     SwaggerModule.setup('docs', app, document);
