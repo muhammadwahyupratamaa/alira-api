@@ -1,0 +1,21 @@
+services:
+  db:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-alira}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-alira_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-alira}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - alira_postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-alira} -d ${POSTGRES_DB:-alira}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  alira_postgres_data:
