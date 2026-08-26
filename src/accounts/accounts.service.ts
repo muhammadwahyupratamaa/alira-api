@@ -27,7 +27,7 @@ export class AccountsService {
         initialBalance: new Prisma.Decimal(dto.initialBalance),
       },
     });
-    return this.toResponse(account);
+    return this.toResponse(account, account.initialBalance);
   }
 
   async findAll(userId: string): Promise<AccountResponseDto[]> {
@@ -35,7 +35,13 @@ export class AccountsService {
       where: { userId },
       orderBy: [{ isActive: 'desc' }, { createdAt: 'asc' }],
     });
-    return accounts.map((account) => this.toResponse(account));
+    const balances = await this.currentBalances(userId, accounts);
+    return accounts.map((account) =>
+      this.toResponse(
+        account,
+        balances.get(account.id) ?? account.initialBalance,
+      ),
+    );
   }
 
   async findOne(userId: string, id: string): Promise<AccountResponseDto> {
@@ -43,7 +49,11 @@ export class AccountsService {
       where: { id, userId },
     });
     if (!account) throw new NotFoundException('Account not found');
-    return this.toResponse(account);
+    const balances = await this.currentBalances(userId, [account]);
+    return this.toResponse(
+      account,
+      balances.get(account.id) ?? account.initialBalance,
+    );
   }
 
   async update(
@@ -116,14 +126,43 @@ export class AccountsService {
     );
   }
 
-  private toResponse(account: Account): AccountResponseDto {
+  private async currentBalances(
+    userId: string,
+    accounts: Pick<Account, 'id' | 'initialBalance'>[],
+  ): Promise<Map<string, Prisma.Decimal>> {
+    if (accounts.length === 0) return new Map();
+    const accountIds = accounts.map(({ id }) => id);
+    const totals = await this.prisma.transaction.groupBy({
+      by: ['accountId', 'type'],
+      where: { userId, accountId: { in: accountIds }, deletedAt: null },
+      _sum: { amount: true },
+    });
+    const balances = new Map(
+      accounts.map(({ id, initialBalance }) => [id, initialBalance]),
+    );
+    for (const total of totals) {
+      const balance = balances.get(total.accountId);
+      const amount = total._sum.amount;
+      if (!balance || !amount) continue;
+      balances.set(
+        total.accountId,
+        total.type === 'INCOME' ? balance.plus(amount) : balance.minus(amount),
+      );
+    }
+    return balances;
+  }
+
+  private toResponse(
+    account: Account,
+    currentBalance: Prisma.Decimal,
+  ): AccountResponseDto {
     const initialBalance = account.initialBalance.toFixed(2);
     return {
       id: account.id,
       name: account.name,
       type: account.type,
       initialBalance,
-      currentBalance: initialBalance,
+      currentBalance: currentBalance.toFixed(2),
       isActive: account.isActive,
       createdAt: account.createdAt,
       updatedAt: account.updatedAt,

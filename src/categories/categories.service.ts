@@ -64,6 +64,16 @@ export class CategoriesService {
     dto: UpdateCategoryDto,
   ): Promise<CategoryResponseDto> {
     await this.requireVisibleCategory(userId, id, true);
+    if (dto.type !== undefined) {
+      const incompatibleTransactions = await this.prisma.transaction.count({
+        where: { categoryId: id, userId, type: { not: dto.type } },
+      });
+      if (incompatibleTransactions > 0) {
+        throw new ConflictException(
+          'Category type cannot change while referenced by transactions',
+        );
+      }
+    }
     const data: Prisma.CategoryUpdateManyMutationInput = {};
     if (dto.name !== undefined) data.name = dto.name;
     if (dto.type !== undefined) data.type = dto.type;

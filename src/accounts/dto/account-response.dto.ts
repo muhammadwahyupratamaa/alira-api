@@ -16,8 +16,7 @@ export class AccountResponseDto {
 
   @ApiProperty({
     example: '1500000.00',
-    description:
-      'Initial balance plus transactions; equals initialBalance until transactions are implemented',
+    description: 'Initial balance plus active income minus active expenses',
     type: String,
   })
   currentBalance!: string;

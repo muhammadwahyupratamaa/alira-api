@@ -13,6 +13,7 @@ import {
 } from './config';
 import { HealthModule } from './health/health.module';
 import { PrismaModule } from './infrastructure/prisma/prisma.module';
+import { TransactionsModule } from './transactions/transactions.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { PrismaModule } from './infrastructure/prisma/prisma.module';
     AuthModule,
     AccountsModule,
     CategoriesModule,
+    TransactionsModule,
     HealthModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
