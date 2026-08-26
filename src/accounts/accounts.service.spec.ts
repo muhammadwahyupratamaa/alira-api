@@ -1,5 +1,10 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
-import { Account, AccountType, Prisma } from '../generated/prisma/client';
+import {
+  Account,
+  AccountType,
+  CategoryType,
+  Prisma,
+} from '../generated/prisma/client';
 import { PrismaService } from '../infrastructure/prisma/prisma.service';
 import { AccountsService } from './accounts.service';
 
@@ -27,8 +32,12 @@ describe('AccountsService', () => {
     .mockImplementation((callback: (client: unknown) => unknown) =>
       Promise.resolve(callback({ account: accountClient })),
     );
+  const transactionClient = {
+    groupBy: jest.fn().mockResolvedValue([]),
+  };
   const prisma = {
     account: accountClient,
+    transaction: transactionClient,
     $transaction: transaction,
   } as unknown as PrismaService;
 
@@ -39,6 +48,7 @@ describe('AccountsService', () => {
     accountClient.findFirst.mockResolvedValue(account);
     accountClient.updateMany.mockResolvedValue({ count: 1 });
     accountClient.count.mockResolvedValue(2);
+    transactionClient.groupBy.mockResolvedValue([]);
   });
 
   it('creates an owned account and serializes balances as strings', async () => {
@@ -70,6 +80,35 @@ describe('AccountsService', () => {
     );
     expect(accountClient.findFirst).toHaveBeenCalledWith({
       where: { id: account.id, userId },
+    });
+  });
+
+  it('calculates current balance from active income and expense totals', async () => {
+    transactionClient.groupBy.mockResolvedValue([
+      {
+        accountId: account.id,
+        type: CategoryType.INCOME,
+        _sum: { amount: new Prisma.Decimal('250.25') },
+      },
+      {
+        accountId: account.id,
+        type: CategoryType.EXPENSE,
+        _sum: { amount: new Prisma.Decimal('100.10') },
+      },
+    ]);
+    const service = new AccountsService(prisma);
+
+    const result = await service.findAll(userId);
+
+    expect(result[0]?.currentBalance).toBe('1150.65');
+    expect(transactionClient.groupBy).toHaveBeenCalledWith({
+      by: ['accountId', 'type'],
+      where: {
+        userId,
+        accountId: { in: [account.id] },
+        deletedAt: null,
+      },
+      _sum: { amount: true },
     });
   });
 
