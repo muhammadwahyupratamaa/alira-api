@@ -14,6 +14,7 @@ import {
 } from './config';
 import { HealthModule } from './health/health.module';
 import { PrismaModule } from './infrastructure/prisma/prisma.module';
+import { ProfileModule } from './profile/profile.module';
 import { TransactionsModule } from './transactions/transactions.module';
 
 @Module({
@@ -36,6 +37,7 @@ import { TransactionsModule } from './transactions/transactions.module';
     CategoriesModule,
     TransactionsModule,
     DashboardModule,
+    ProfileModule,
     HealthModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
