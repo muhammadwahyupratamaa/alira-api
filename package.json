@@ -21,7 +21,8 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "pretest:e2e": "prisma migrate deploy --config prisma.test.config.ts",
-    "test:e2e": "jest --config ./test/jest-e2e.json --runInBand",
+    "test:e2e": "npm run test:e2e:run",
+    "test:e2e:run": "jest --config ./test/jest-e2e.json --runInBand",
     "prisma:generate": "prisma generate",
     "prisma:validate": "prisma validate",
     "prisma:format": "prisma format",
@@ -31,6 +32,10 @@
     "docker:up": "docker compose up -d db",
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f db",
+    "docker:prod:build": "docker compose -f compose.production.yaml build",
+    "docker:prod:migrate": "docker compose -f compose.production.yaml up -d --wait db && docker compose -f compose.production.yaml run --rm --no-deps migrate",
+    "docker:prod:up": "docker compose -f compose.production.yaml up -d --no-build --no-deps api",
+    "docker:prod:down": "docker compose -f compose.production.yaml down",
     "verify": "npm run prisma:validate && npm run prisma:generate && npm run format:check && npm run lint && npm run typecheck && npm test && npm run test:e2e && npm run build"
   },
   "dependencies": {

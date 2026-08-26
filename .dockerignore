@@ -2,5 +2,12 @@ node_modules
 dist
 coverage
 .git
+.github
 .env
+.env.*
+!.env.example
+test
+**/*.spec.ts
+src/generated
+.DS_Store
 *.log
