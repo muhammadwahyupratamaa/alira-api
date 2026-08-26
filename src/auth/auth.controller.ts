@@ -10,7 +10,6 @@ import {
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import {
   ApiBearerAuth,
   ApiConflictResponse,
@@ -25,9 +24,8 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
-import { CookieOptions, Request, Response } from 'express';
-import { AppConfig } from '../config/app.config';
-import { AuthConfig } from '../config/auth.config';
+import { Request, Response } from 'express';
+import { AuthCookieService } from './auth-cookie.service';
 import { AuthService } from './auth.service';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { LoginDto } from './dto/login.dto';
@@ -40,16 +38,10 @@ import { AuthResponse, PublicUser } from './types/public-user.type';
 @ApiTags('Authentication')
 @Controller('auth')
 export class AuthController {
-  private readonly appConfig: AppConfig;
-  private readonly authConfig: AuthConfig;
-
   constructor(
     private readonly authService: AuthService,
-    configService: ConfigService,
-  ) {
-    this.appConfig = configService.getOrThrow<AppConfig>('app');
-    this.authConfig = configService.getOrThrow<AuthConfig>('auth');
-  }
+    private readonly cookies: AuthCookieService,
+  ) {}
 
   @Post('register')
   @Throttle({ default: { limit: 3, ttl: 60_000 } })
@@ -77,7 +69,7 @@ export class AuthController {
     @Res({ passthrough: true }) response: Response,
   ): Promise<AuthResponse> {
     const result = await this.authService.login(dto, request.get('user-agent'));
-    this.setRefreshCookie(response, result.refreshToken);
+    this.cookies.setRefresh(response, result.refreshToken);
     return { accessToken: result.accessToken, user: result.user };
   }
 
@@ -102,7 +94,7 @@ export class AuthController {
       this.getRefreshCookie(request),
       request.get('user-agent'),
     );
-    this.setRefreshCookie(response, result.refreshToken);
+    this.cookies.setRefresh(response, result.refreshToken);
     return { accessToken: result.accessToken, user: result.user };
   }
 
@@ -119,7 +111,7 @@ export class AuthController {
     @Res({ passthrough: true }) response: Response,
   ): Promise<void> {
     await this.authService.logout(this.getRefreshCookie(request));
-    this.clearRefreshCookie(response);
+    this.cookies.clearRefresh(response);
   }
 
   @Post('logout-all')
@@ -134,7 +126,7 @@ export class AuthController {
     @Res({ passthrough: true }) response: Response,
   ): Promise<void> {
     await this.authService.logoutAll(user.id);
-    this.clearRefreshCookie(response);
+    this.cookies.clearRefresh(response);
   }
 
   @Get('me')
@@ -151,35 +143,10 @@ export class AuthController {
   }
 
   private getRefreshCookie(request: Request): string {
-    const value: unknown = request.cookies?.[this.appConfig.refreshCookieName];
+    const value: unknown = request.cookies?.[this.cookies.name];
     if (typeof value !== 'string' || !value) {
       throw new UnauthorizedException('Refresh token is required');
     }
     return value;
-  }
-
-  private setRefreshCookie(response: Response, token: string): void {
-    response.cookie(
-      this.appConfig.refreshCookieName,
-      token,
-      this.cookieOptions(),
-    );
-  }
-
-  private clearRefreshCookie(response: Response): void {
-    response.clearCookie(
-      this.appConfig.refreshCookieName,
-      this.cookieOptions(),
-    );
-  }
-
-  private cookieOptions(): CookieOptions {
-    return {
-      httpOnly: true,
-      secure: this.appConfig.cookieSecure,
-      sameSite: this.appConfig.cookieSameSite,
-      path: `/${this.appConfig.apiPrefix}/auth`,
-      maxAge: this.authConfig.refreshTtlSeconds * 1000,
-    };
   }
 }
