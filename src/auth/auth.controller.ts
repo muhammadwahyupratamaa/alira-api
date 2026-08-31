@@ -90,12 +90,17 @@ export class AuthController {
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ): Promise<AuthResponse> {
-    const result = await this.authService.refresh(
-      this.getRefreshCookie(request),
-      request.get('user-agent'),
-    );
-    this.cookies.setRefresh(response, result.refreshToken);
-    return { accessToken: result.accessToken, user: result.user };
+    try {
+      const result = await this.authService.refresh(
+        this.getRefreshCookie(request),
+        request.get('user-agent'),
+      );
+      this.cookies.setRefresh(response, result.refreshToken);
+      return { accessToken: result.accessToken, user: result.user };
+    } catch (error: unknown) {
+      this.cookies.clearRefresh(response);
+      throw error;
+    }
   }
 
   @Post('logout')

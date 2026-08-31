@@ -8,6 +8,8 @@ export class PrismaService
   extends PrismaClient
   implements OnModuleInit, OnModuleDestroy
 {
+  readonly databaseSchema: string;
+
   constructor(configService: ConfigService) {
     const connectionString = configService.getOrThrow<string>('DATABASE_URL');
     const schema = new URL(connectionString).searchParams.get('schema');
@@ -16,6 +18,8 @@ export class PrismaService
       schema ? { schema } : undefined,
     );
     super({ adapter });
+    this.databaseSchema =
+      schema && /^[A-Za-z_][A-Za-z0-9_]*$/.test(schema) ? schema : 'public';
   }
 
   async onModuleInit(): Promise<void> {

@@ -55,6 +55,9 @@ describe('AuthService refresh rotation', () => {
     .fn<Promise<{ count: number }>, [UpdateManyArgs]>()
     .mockResolvedValue({ count: 1 });
   const create = jest.fn<Promise<object>, [CreateArgs]>().mockResolvedValue({});
+  const revokeAll = jest
+    .fn<Promise<{ count: number }>, [unknown]>()
+    .mockResolvedValue({ count: 1 });
   const transaction = jest
     .fn()
     .mockImplementation((callback: (client: unknown) => unknown) =>
@@ -67,6 +70,7 @@ describe('AuthService refresh rotation', () => {
   const prisma = {
     refreshSession: {
       findUnique: jest.fn().mockResolvedValue(session),
+      updateMany: revokeAll,
     },
     $transaction: transaction,
   } as unknown as PrismaService;
@@ -93,6 +97,7 @@ describe('AuthService refresh rotation', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     updateMany.mockResolvedValue({ count: 1 });
+    revokeAll.mockResolvedValue({ count: 1 });
     create.mockResolvedValue({});
     (prisma.refreshSession.findUnique as jest.Mock).mockResolvedValue(session);
   });
@@ -123,6 +128,9 @@ describe('AuthService refresh rotation', () => {
       UnauthorizedException,
     );
     expect(transaction).not.toHaveBeenCalled();
+    expect(revokeAll).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { userId: user.id, revokedAt: null } }),
+    );
   });
 
   it('rejects an expired session before rotation', async () => {
@@ -146,5 +154,6 @@ describe('AuthService refresh rotation', () => {
       UnauthorizedException,
     );
     expect(create).not.toHaveBeenCalled();
+    expect(revokeAll).toHaveBeenCalled();
   });
 });
