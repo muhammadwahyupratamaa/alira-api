@@ -14,11 +14,13 @@ import { AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { DashboardService } from './dashboard.service';
 import {
   CategoryBreakdownQueryDto,
+  CashFlowQueryDto,
   DashboardPeriodQueryDto,
   RecentTransactionsQueryDto,
 } from './dto/dashboard-query.dto';
 import {
   CategoryBreakdownResponseDto,
+  CashFlowResponseDto,
   DashboardSummaryDto,
   RecentTransactionDto,
 } from './dto/dashboard-response.dto';
@@ -40,6 +42,15 @@ export class DashboardController {
     @Query() query: DashboardPeriodQueryDto,
   ): Promise<DashboardSummaryDto> {
     return this.dashboard.summary(user.id, query);
+  }
+  @Get('cash-flow')
+  @ApiOperation({ summary: 'Get zero-filled income and expense chart buckets' })
+  @ApiOkResponse({ type: CashFlowResponseDto })
+  cashFlow(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: CashFlowQueryDto,
+  ): Promise<CashFlowResponseDto> {
+    return this.dashboard.cashFlow(user.id, query);
   }
   @Get('category-breakdown')
   @ApiOperation({ summary: 'Get monthly totals grouped by category' })

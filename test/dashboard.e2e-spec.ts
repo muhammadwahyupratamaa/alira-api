@@ -29,6 +29,9 @@ interface RecentBody {
 interface LoginBody {
   accessToken: string;
 }
+interface CashFlowBody {
+  data: { label: string; income: string; expense: string }[];
+}
 
 describe('Dashboard (e2e)', () => {
   let app: INestApplication;
@@ -236,6 +239,25 @@ describe('Dashboard (e2e)', () => {
       '66.67',
       '33.33',
     ]);
+  });
+
+  it('returns owned, timezone-local, zero-filled cash-flow buckets', async () => {
+    await request(server)
+      .get('/api/v1/dashboard/cash-flow?from=2026-08-01&to=2026-08-03')
+      .expect(401);
+    const response = await request(server)
+      .get('/api/v1/dashboard/cash-flow?from=2026-08-01&to=2026-08-03')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(200);
+    expect((response.body as CashFlowBody).data).toEqual([
+      { label: '2026-08-01', income: '200.00', expense: '0.00' },
+      { label: '2026-08-02', income: '0.00', expense: '0.00' },
+      { label: '2026-08-03', income: '0.00', expense: '0.00' },
+    ]);
+    await request(server)
+      .get('/api/v1/dashboard/cash-flow?from=2026-08-04&to=2026-08-01')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(400);
   });
 
   it('scopes every result by owned account and hides another user resources', async () => {
