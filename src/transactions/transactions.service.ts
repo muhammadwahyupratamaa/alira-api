@@ -53,15 +53,25 @@ const SORT_ORDERS: Record<
   [TransactionSort.TRANSACTION_DATE_DESC]: [
     { transactionDate: 'desc' },
     { createdAt: 'desc' },
+    { id: 'desc' },
   ],
   [TransactionSort.TRANSACTION_DATE_ASC]: [
     { transactionDate: 'asc' },
     { createdAt: 'asc' },
+    { id: 'asc' },
   ],
-  [TransactionSort.CREATED_AT_DESC]: [{ createdAt: 'desc' }],
-  [TransactionSort.CREATED_AT_ASC]: [{ createdAt: 'asc' }],
-  [TransactionSort.AMOUNT_DESC]: [{ amount: 'desc' }, { createdAt: 'desc' }],
-  [TransactionSort.AMOUNT_ASC]: [{ amount: 'asc' }, { createdAt: 'desc' }],
+  [TransactionSort.CREATED_AT_DESC]: [{ createdAt: 'desc' }, { id: 'desc' }],
+  [TransactionSort.CREATED_AT_ASC]: [{ createdAt: 'asc' }, { id: 'asc' }],
+  [TransactionSort.AMOUNT_DESC]: [
+    { amount: 'desc' },
+    { createdAt: 'desc' },
+    { id: 'desc' },
+  ],
+  [TransactionSort.AMOUNT_ASC]: [
+    { amount: 'asc' },
+    { createdAt: 'desc' },
+    { id: 'desc' },
+  ],
 };
 
 @Injectable()
@@ -104,25 +114,26 @@ export class TransactionsService {
     const dateValue = dto.transactionDate ?? todayInTimeZone(timeZone);
     assertNotFutureDate(dateValue, timeZone);
     const amount = this.positiveAmount(dto.amount);
-    await this.requireActiveAccount(userId, dto.accountId);
-    const category = await this.requireVisibleCategory(
-      userId,
-      dto.categoryId,
-      true,
-    );
-    this.assertMatchingType(dto.type, category.type);
-
-    const transaction = await this.prisma.transaction.create({
-      data: {
+    const transaction = await this.prisma.$transaction(async (database) => {
+      const category = await this.lockActiveReferences(
+        database,
         userId,
-        accountId: dto.accountId,
-        categoryId: dto.categoryId,
-        type: dto.type,
-        amount,
-        transactionDate: dateOnlyToUtcStart(dateValue, timeZone),
-        note: dto.note,
-      },
-      include: transactionInclude,
+        dto.accountId,
+        dto.categoryId,
+      );
+      this.assertMatchingType(dto.type, category.type);
+      return database.transaction.create({
+        data: {
+          userId,
+          accountId: dto.accountId,
+          categoryId: dto.categoryId,
+          type: dto.type,
+          amount,
+          transactionDate: dateOnlyToUtcStart(dateValue, timeZone),
+          note: dto.note,
+        },
+        include: transactionInclude,
+      });
     });
     return this.toResponse(transaction, timeZone);
   }
@@ -141,16 +152,9 @@ export class TransactionsService {
     const timeZone = await this.getUserTimeZone(userId);
     const existing = await this.requireActiveTransaction(userId, id);
 
-    if (dto.accountId && dto.accountId !== existing.account.id) {
-      await this.requireActiveAccount(userId, dto.accountId);
-    }
-
-    const category =
-      dto.categoryId && dto.categoryId !== existing.category.id
-        ? await this.requireVisibleCategory(userId, dto.categoryId, true)
-        : existing.category;
+    const accountId = dto.accountId ?? existing.account.id;
+    const categoryId = dto.categoryId ?? existing.category.id;
     const type = dto.type ?? existing.type;
-    this.assertMatchingType(type, category.type);
 
     const data: Prisma.TransactionUncheckedUpdateManyInput = {};
     if (dto.accountId !== undefined) data.accountId = dto.accountId;
@@ -163,41 +167,56 @@ export class TransactionsService {
       data.transactionDate = dateOnlyToUtcStart(dto.transactionDate, timeZone);
     }
 
-    const updated = await this.prisma.transaction.updateMany({
-      where: { id, userId, deletedAt: null },
-      data,
+    const transaction = await this.prisma.$transaction(async (database) => {
+      const category = await this.lockActiveReferences(
+        database,
+        userId,
+        accountId,
+        categoryId,
+      );
+      this.assertMatchingType(type, category.type);
+      const updated = await database.transaction.updateMany({
+        where: { id, userId, deletedAt: null },
+        data,
+      });
+      if (updated.count !== 1)
+        throw new NotFoundException('Transaction not found');
+      const result = await database.transaction.findFirst({
+        where: { id, userId, deletedAt: null },
+        include: transactionInclude,
+      });
+      if (!result) throw new NotFoundException('Transaction not found');
+      return result;
     });
-    if (updated.count !== 1)
-      throw new NotFoundException('Transaction not found');
-    const transaction = await this.requireActiveTransaction(userId, id);
     return this.toResponse(transaction, timeZone);
   }
 
   async duplicate(userId: string, id: string): Promise<TransactionResponseDto> {
     const timeZone = await this.getUserTimeZone(userId);
     const source = await this.requireActiveTransaction(userId, id);
-    await this.requireActiveAccount(userId, source.account.id);
-    const category = await this.requireVisibleCategory(
-      userId,
-      source.category.id,
-      true,
-    );
-    this.assertMatchingType(source.type, category.type);
-
-    const transaction = await this.prisma.transaction.create({
-      data: {
+    const transaction = await this.prisma.$transaction(async (database) => {
+      const category = await this.lockActiveReferences(
+        database,
         userId,
-        accountId: source.account.id,
-        categoryId: source.category.id,
-        type: source.type,
-        amount: source.amount,
-        transactionDate: dateOnlyToUtcStart(
-          todayInTimeZone(timeZone),
-          timeZone,
-        ),
-        note: source.note,
-      },
-      include: transactionInclude,
+        source.account.id,
+        source.category.id,
+      );
+      this.assertMatchingType(source.type, category.type);
+      return database.transaction.create({
+        data: {
+          userId,
+          accountId: source.account.id,
+          categoryId: source.category.id,
+          type: source.type,
+          amount: source.amount,
+          transactionDate: dateOnlyToUtcStart(
+            todayInTimeZone(timeZone),
+            timeZone,
+          ),
+          note: source.note,
+        },
+        include: transactionInclude,
+      });
     });
     return this.toResponse(transaction, timeZone);
   }
@@ -286,6 +305,49 @@ export class TransactionsService {
     });
     if (!account) throw new NotFoundException('Account not found');
     if (!account.isActive) throw new BadRequestException('Account is inactive');
+  }
+
+  private async lockActiveReferences(
+    database: Prisma.TransactionClient,
+    userId: string,
+    accountId: string,
+    categoryId: string,
+  ): Promise<{ type: CategoryType }> {
+    // Account then Category is a deterministic lock order for every mutation.
+    const schema = this.prisma.databaseSchema;
+    const accounts = await database.$queryRawUnsafe<{ id: string }[]>(
+      `SELECT "id" FROM "${schema}"."Account" WHERE "id" = $1 AND "userId" = $2 AND "isActive" = true FOR SHARE`,
+      accountId,
+      userId,
+    );
+    if (accounts.length !== 1) {
+      const owned = await database.account.findFirst({
+        where: { id: accountId, userId },
+        select: { id: true },
+      });
+      if (!owned) throw new NotFoundException('Account not found');
+      throw new BadRequestException('Account is inactive');
+    }
+    const categories = await database.$queryRawUnsafe<{ type: CategoryType }[]>(
+      `SELECT "type" FROM "${schema}"."Category" WHERE "id" = $1 AND "isActive" = true AND ("userId" = $2 OR ("userId" IS NULL AND "isDefault" = true)) FOR SHARE`,
+      categoryId,
+      userId,
+    );
+    if (categories.length !== 1) {
+      const visible = await database.category.findFirst({
+        where: {
+          id: categoryId,
+          OR: [
+            { userId: null, isDefault: true },
+            { userId, isDefault: false },
+          ],
+        },
+        select: { id: true, isActive: true },
+      });
+      if (!visible) throw new NotFoundException('Category not found');
+      throw new BadRequestException('Category is inactive');
+    }
+    return categories[0]!;
   }
 
   private async requireVisibleCategory(

@@ -62,7 +62,15 @@ jobs:
         run: npm run format:check && npm run lint && npm run typecheck
       - name: Run unit tests
         run: npm test
+      - name: Collect unit coverage
+        run: npm run test:cov
       - name: Run E2E tests
         run: npm run test:e2e:run
       - name: Build production application
         run: npm run build
+      - name: Build and inspect Docker targets
+        run: |
+          docker build --target runtime -t alira-api:ci-runtime .
+          docker build --target migration -t alira-api:ci-migration .
+          test "$(docker image inspect alira-api:ci-runtime --format '{{.Config.User}}')" = "node"
+          test "$(docker image inspect alira-api:ci-runtime --format '{{join .Config.Cmd " "}}')" = "node dist/main.js"

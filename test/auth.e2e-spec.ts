@@ -140,6 +140,12 @@ describe('Authentication (e2e)', () => {
     await request(httpServer)
       .post('/api/v1/auth/refresh')
       .set('Origin', origin)
+      .set('Cookie', nextCookie.header)
+      .expect(401);
+
+    await request(httpServer)
+      .post('/api/v1/auth/refresh')
+      .set('Origin', origin)
       .set('Cookie', 'alira_refresh=malformed')
       .expect(401);
   });

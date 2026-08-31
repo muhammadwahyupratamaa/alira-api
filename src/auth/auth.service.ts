@@ -23,6 +23,8 @@ interface SessionAuthResult extends AuthResponse {
   refreshExpiresAt: Date;
 }
 
+class RefreshReplayError extends Error {}
+
 @Injectable()
 export class AuthService {
   private readonly config: AuthConfig;
@@ -79,43 +81,51 @@ export class AuthService {
       include: { user: true },
     });
 
-    if (
-      !session ||
-      session.revokedAt ||
-      session.expiresAt <= new Date() ||
-      !this.hashesMatch(session.tokenHash, parsed.tokenHash)
-    ) {
+    if (!session || !this.hashesMatch(session.tokenHash, parsed.tokenHash)) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+    if (session.revokedAt) {
+      // Safe MVP containment: a replayed known token revokes every active session
+      // for that user because the schema has no token-family identifier yet.
+      await this.revokeAllActiveSessions(session.userId);
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+    if (session.expiresAt <= new Date()) {
       throw new UnauthorizedException('Invalid refresh token');
     }
 
     const next = this.tokenService.createRefreshCredentials();
     const now = new Date();
 
-    await this.prisma.$transaction(async (transaction) => {
-      const revoked = await transaction.refreshSession.updateMany({
-        where: {
-          id: session.id,
-          tokenHash: parsed.tokenHash,
-          revokedAt: null,
-          expiresAt: { gt: now },
-        },
-        data: { revokedAt: now },
-      });
+    try {
+      await this.prisma.$transaction(async (transaction) => {
+        const revoked = await transaction.refreshSession.updateMany({
+          where: {
+            id: session.id,
+            tokenHash: parsed.tokenHash,
+            revokedAt: null,
+            expiresAt: { gt: now },
+          },
+          data: { revokedAt: now },
+        });
 
-      if (revoked.count !== 1) {
-        throw new UnauthorizedException('Invalid refresh token');
-      }
+        if (revoked.count !== 1) throw new RefreshReplayError();
 
-      await transaction.refreshSession.create({
-        data: {
-          id: next.sessionId,
-          userId: session.userId,
-          tokenHash: next.tokenHash,
-          expiresAt: next.expiresAt,
-          userAgent: this.normalizeUserAgent(userAgent),
-        },
+        await transaction.refreshSession.create({
+          data: {
+            id: next.sessionId,
+            userId: session.userId,
+            tokenHash: next.tokenHash,
+            expiresAt: next.expiresAt,
+            userAgent: this.normalizeUserAgent(userAgent),
+          },
+        });
       });
-    });
+    } catch (error: unknown) {
+      if (!(error instanceof RefreshReplayError)) throw error;
+      await this.revokeAllActiveSessions(session.userId);
+      throw new UnauthorizedException('Invalid refresh token');
+    }
 
     const accessToken = await this.tokenService.signAccessToken({
       sub: session.user.id,
@@ -149,10 +159,7 @@ export class AuthService {
   }
 
   async logoutAll(userId: string): Promise<void> {
-    await this.prisma.refreshSession.updateMany({
-      where: { userId, revokedAt: null },
-      data: { revokedAt: new Date() },
-    });
+    await this.revokeAllActiveSessions(userId);
   }
 
   async getMe(userId: string): Promise<PublicUser> {
@@ -213,6 +220,13 @@ export class AuthService {
       throw new UnauthorizedException('Invalid refresh token');
     }
     return session;
+  }
+
+  private async revokeAllActiveSessions(userId: string): Promise<void> {
+    await this.prisma.refreshSession.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
   }
 
   private hashesMatch(storedHash: string, candidateHash: string): boolean {

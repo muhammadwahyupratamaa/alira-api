@@ -36,6 +36,14 @@ describe('TransactionsService', () => {
     findFirst: jest.fn().mockResolvedValue(transaction),
     updateMany: jest.fn().mockResolvedValue({ count: 1 }),
   };
+  const database = {
+    transaction: transactionClient,
+    account: { findFirst: jest.fn().mockResolvedValue({ id: accountId }) },
+    category: { findFirst: jest.fn().mockResolvedValue({ id: categoryId }) },
+    $queryRawUnsafe: jest
+      .fn()
+      .mockResolvedValue([{ id: accountId, type: CategoryType.INCOME }]),
+  };
   const prisma = {
     user: {
       findUnique: jest.fn().mockResolvedValue({ timezone: 'Asia/Jakarta' }),
@@ -51,6 +59,9 @@ describe('TransactionsService', () => {
       }),
     },
     transaction: transactionClient,
+    $transaction: jest.fn((callback: (client: typeof database) => unknown) =>
+      Promise.resolve(callback(database)),
+    ),
   } as unknown as PrismaService;
 
   beforeEach(() => {
@@ -69,6 +80,9 @@ describe('TransactionsService', () => {
     transactionClient.create.mockResolvedValue(transaction);
     transactionClient.findFirst.mockResolvedValue(transaction);
     transactionClient.updateMany.mockResolvedValue({ count: 1 });
+    database.$queryRawUnsafe.mockResolvedValue([
+      { id: accountId, type: CategoryType.INCOME },
+    ]);
   });
 
   it('rejects a zero amount', async () => {

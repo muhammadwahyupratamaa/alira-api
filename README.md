@@ -75,7 +75,7 @@ npm run docker:prod:up
 
 Runner migration memakai target image tersendiri dengan Prisma CLI. Kegagalan `prisma migrate deploy` harus menghentikan rollout; jangan lanjutkan update API. Jangan gunakan `prisma migrate dev` atau seed development di production. Service API juga bergantung pada migration yang sukses.
 
-Container menjalankan `node dist/main.js` sebagai user non-root. Docker health check memanggil `GET /api/v1/health`; `init: true` membantu forwarding signal dan process reaping.
+Container menjalankan `node dist/main.js` sebagai user non-root. Docker health check mengikuti `API_PREFIX` (default `GET /api/v1/health`); `init: true` membantu forwarding signal dan process reaping.
 
 ## API documentation dan health
 
@@ -84,4 +84,8 @@ Container menjalankan `node dist/main.js` sebagai user non-root. Docker health c
 
 ## Continuous Integration
 
-`.github/workflows/ci.yml` berjalan pada pull request ke `main` dan push ke `main` menggunakan Node.js 26 serta PostgreSQL 18. CI menjalankan `npm ci`, migration deploy dengan test credential, Prisma validation/generation, format, lint, strict typecheck, unit test, E2E, dan build. Workflow ini tidak melakukan deployment.
+`.github/workflows/ci.yml` berjalan pada pull request ke `main` dan push ke `main` menggunakan Node.js 26 serta PostgreSQL 18. CI menjalankan `npm ci`, migration deploy dengan test credential, Prisma validation/generation, format, lint, strict typecheck, unit test, coverage, E2E, build, dan Docker target builds. Workflow ini tidak melakukan deployment, backup, rollback, atau secret rotation.
+
+Refresh-token replay policy: a replay of a known revoked refresh session revokes all active sessions for that user. This safe MVP containment remains in place until refresh-session families are modeled explicitly. Malformed or unknown tokens do not revoke any session.
+
+Migrations are forward-only. `prisma migrate deploy` must complete before an API rollout; recovery requires a reviewed forward migration rather than editing applied history. The dashboard currently has monthly summary/breakdown/recent endpoints, but no multi-period chart API.

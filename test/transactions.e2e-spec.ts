@@ -124,6 +124,56 @@ describe('Transactions (e2e)', () => {
       .expect(404);
   });
 
+  it('enforces transaction ownership at the database boundary', async () => {
+    const userA = await prisma.user.findUniqueOrThrow({
+      where: { email: 'transactions-a@example.com' },
+    });
+
+    await expect(
+      prisma.transaction.create({
+        data: {
+          userId: userA.id,
+          accountId: accountB.id,
+          categoryId: salaryCategoryId,
+          type: CategoryType.INCOME,
+          amount: '10.00',
+          transactionDate: new Date(),
+        },
+      }),
+    ).rejects.toThrow();
+
+    await expect(
+      prisma.transaction.create({
+        data: {
+          userId: userA.id,
+          accountId: accountA.id,
+          categoryId: expenseCategoryB.id,
+          type: CategoryType.EXPENSE,
+          amount: '10.00',
+          transactionDate: new Date(),
+        },
+      }),
+    ).rejects.toThrow();
+
+    const owned = await prisma.transaction.create({
+      data: {
+        userId: userA.id,
+        accountId: accountA.id,
+        categoryId: salaryCategoryId,
+        type: CategoryType.INCOME,
+        amount: '10.00',
+        transactionDate: new Date(),
+      },
+    });
+    await expect(
+      prisma.transaction.update({
+        where: { id: owned.id },
+        data: { accountId: accountB.id },
+      }),
+    ).rejects.toThrow();
+    await prisma.transaction.delete({ where: { id: owned.id } });
+  });
+
   it('creates income and expense and calculates current balance', async () => {
     incomeTransaction = await createTransaction(
       userAToken,
@@ -165,6 +215,68 @@ describe('Transactions (e2e)', () => {
       .set('Authorization', `Bearer ${userAToken}`)
       .send({ type: CategoryType.INCOME })
       .expect(409);
+  });
+
+  it('preserves exact decimal cents through update, delete, restore, and duplicate', async () => {
+    const preciseAccount = await createAccount(userAToken, 'Precise', '0.01');
+    const income = await createTransaction(
+      userAToken,
+      transactionPayload(preciseAccount.id, salaryCategoryId, 'INCOME', '0.20'),
+    );
+    const expense = await createTransaction(
+      userAToken,
+      transactionPayload(
+        preciseAccount.id,
+        expenseCategoryA.id,
+        'EXPENSE',
+        '0.10',
+      ),
+    );
+    expect(await currentBalance(userAToken, preciseAccount.id)).toBe('0.11');
+    await request(httpServer)
+      .patch(`/api/v1/transactions/${expense.id}`)
+      .set('Authorization', `Bearer ${userAToken}`)
+      .send({ amount: '0.01' })
+      .expect(200);
+    expect(await currentBalance(userAToken, preciseAccount.id)).toBe('0.20');
+    await request(httpServer)
+      .delete(`/api/v1/transactions/${income.id}`)
+      .set('Authorization', `Bearer ${userAToken}`)
+      .expect(204);
+    expect(await currentBalance(userAToken, preciseAccount.id)).toBe('0.00');
+    await request(httpServer)
+      .post(`/api/v1/transactions/${income.id}/restore`)
+      .set('Authorization', `Bearer ${userAToken}`)
+      .expect(200);
+    const duplicate = await request(httpServer)
+      .post(`/api/v1/transactions/${income.id}/duplicate`)
+      .set('Authorization', `Bearer ${userAToken}`)
+      .expect(201);
+    expect((duplicate.body as TransactionBody).amount).toBe('0.20');
+    expect(await currentBalance(userAToken, preciseAccount.id)).toBe('0.40');
+  });
+
+  it('accepts the Decimal(19,2) maximum and rejects excess precision', async () => {
+    const maximum = '99999999999999999.99';
+    const response = await request(httpServer)
+      .post('/api/v1/transactions')
+      .set('Authorization', `Bearer ${userAToken}`)
+      .send(
+        transactionPayload(accountA.id, salaryCategoryId, 'INCOME', maximum),
+      )
+      .expect(201);
+    expect((response.body as TransactionBody).amount).toBe(maximum);
+    await request(httpServer)
+      .post('/api/v1/transactions')
+      .set('Authorization', `Bearer ${userAToken}`)
+      .send(
+        transactionPayload(accountA.id, salaryCategoryId, 'INCOME', '0.001'),
+      )
+      .expect(400);
+    await request(httpServer)
+      .delete(`/api/v1/transactions/${(response.body as TransactionBody).id}`)
+      .set('Authorization', `Bearer ${userAToken}`)
+      .expect(204);
   });
 
   it('supports combined filters, search, sorting, and pagination', async () => {
