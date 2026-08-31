@@ -59,3 +59,17 @@ export class RecentTransactionDto {
   @ApiProperty({ type: RecentTransactionCategoryDto })
   category!: RecentTransactionCategoryDto;
 }
+
+export class CashFlowBucketDto {
+  @ApiProperty({ example: '2026-08-01' }) label!: string;
+  @ApiProperty({ type: String, example: '100000.00' }) income!: string;
+  @ApiProperty({ type: String, example: '25000.00' }) expense!: string;
+}
+
+export class CashFlowResponseDto {
+  @ApiProperty({ example: '2026-08-01' }) from!: string;
+  @ApiProperty({ example: '2026-08-31' }) to!: string;
+  @ApiProperty({ enum: ['day', 'week', 'month'] }) granularity!: string;
+  @ApiProperty({ type: CashFlowBucketDto, isArray: true })
+  data!: CashFlowBucketDto[];
+}

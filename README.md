@@ -81,6 +81,7 @@ Container menjalankan `node dist/main.js` sebagai user non-root. Docker health c
 
 - Swagger: `http://localhost:3000/docs` ketika `SWAGGER_ENABLED=true`
 - Health: `http://localhost:3000/api/v1/health`
+- Cash flow: `GET /api/v1/dashboard/cash-flow?from=YYYY-MM-DD&to=YYYY-MM-DD&granularity=day|week|month`; the inclusive range is timezone-local, zero-filled, and limited to 730 days.
 
 ## Continuous Integration
 

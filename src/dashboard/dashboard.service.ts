@@ -1,15 +1,26 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { CategoryType, Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../infrastructure/prisma/prisma.service';
-import { formatInTimeZone } from '../transactions/transaction-date.util';
-import { dashboardPeriod } from './dashboard-period.util';
 import {
+  dateOnlyToUtcStart,
+  formatInTimeZone,
+  nextDateUtcStart,
+} from '../transactions/transaction-date.util';
+import { dashboardPeriod } from './dashboard-period.util';
+import { bucketLabel, cashFlowBuckets } from './cash-flow.util';
+import {
+  CashFlowQueryDto,
   CategoryBreakdownQueryDto,
   DashboardPeriodQueryDto,
   RecentTransactionsQueryDto,
 } from './dto/dashboard-query.dto';
 import {
   CategoryBreakdownResponseDto,
+  CashFlowResponseDto,
   DashboardSummaryDto,
   MetricComparisonDto,
   RecentTransactionDto,
@@ -185,6 +196,54 @@ export class DashboardService {
       account: transaction.account,
       category: transaction.category,
     }));
+  }
+
+  async cashFlow(
+    userId: string,
+    query: CashFlowQueryDto,
+  ): Promise<CashFlowResponseDto> {
+    const timeZone = await this.timeZone(userId);
+    const labels = cashFlowBuckets(query.from, query.to, query.granularity);
+    const today = formatInTimeZone(new Date(), timeZone);
+    if (query.to > today)
+      throw new BadRequestException('Future dates are not allowed');
+    const start = dateOnlyToUtcStart(query.from, timeZone);
+    const end = nextDateUtcStart(query.to, timeZone);
+    const transactions = await this.prisma.transaction.findMany({
+      where: {
+        userId,
+        deletedAt: null,
+        transactionDate: { gte: start, lt: end },
+      },
+      select: { type: true, amount: true, transactionDate: true },
+    });
+    const totals = new Map(
+      labels.map((label) => [label, { income: ZERO, expense: ZERO }]),
+    );
+    for (const transaction of transactions) {
+      const label = bucketLabel(
+        formatInTimeZone(transaction.transactionDate, timeZone),
+        query.granularity,
+      );
+      const total = totals.get(label);
+      if (!total) continue;
+      if (transaction.type === CategoryType.INCOME)
+        total.income = total.income.plus(transaction.amount);
+      else total.expense = total.expense.plus(transaction.amount);
+    }
+    return {
+      from: query.from,
+      to: query.to,
+      granularity: query.granularity,
+      data: labels.map((label) => {
+        const total = totals.get(label)!;
+        return {
+          label,
+          income: total.income.toFixed(2),
+          expense: total.expense.toFixed(2),
+        };
+      }),
+    };
   }
 
   private async timeZone(userId: string): Promise<string> {

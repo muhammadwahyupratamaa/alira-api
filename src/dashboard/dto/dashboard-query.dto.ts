@@ -2,6 +2,7 @@ import { Transform } from 'class-transformer';
 import { IsEnum, IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { CategoryType } from '../../generated/prisma/enums';
+import { IsDateString } from 'class-validator';
 
 const integer = ({ value }: { value: unknown }): unknown =>
   typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : value;
@@ -60,4 +61,34 @@ export class RecentTransactionsQueryDto {
   @IsOptional()
   @IsUUID('4')
   accountId?: string;
+}
+
+export enum CashFlowGranularity {
+  DAY = 'day',
+  WEEK = 'week',
+  MONTH = 'month',
+}
+
+export class CashFlowQueryDto {
+  @ApiPropertyOptional({
+    example: '2026-08-01',
+    description: 'Inclusive YYYY-MM-DD',
+  })
+  @IsDateString()
+  from!: string;
+
+  @ApiPropertyOptional({
+    example: '2026-08-31',
+    description: 'Inclusive YYYY-MM-DD',
+  })
+  @IsDateString()
+  to!: string;
+
+  @ApiPropertyOptional({
+    enum: CashFlowGranularity,
+    default: CashFlowGranularity.DAY,
+  })
+  @IsOptional()
+  @IsEnum(CashFlowGranularity)
+  granularity: CashFlowGranularity = CashFlowGranularity.DAY;
 }
