@@ -89,4 +89,4 @@ Container menjalankan `node dist/main.js` sebagai user non-root. Docker health c
 
 Refresh-token replay policy: a replay of a known revoked refresh session revokes all active sessions for that user. This safe MVP containment remains in place until refresh-session families are modeled explicitly. Malformed or unknown tokens do not revoke any session.
 
-Migrations are forward-only. `prisma migrate deploy` must complete before an API rollout; recovery requires a reviewed forward migration rather than editing applied history. The dashboard currently has monthly summary/breakdown/recent endpoints, but no multi-period chart API.
+Migrations are forward-only. `prisma migrate deploy` must complete before an API rollout; recovery requires a reviewed forward migration rather than editing applied history.

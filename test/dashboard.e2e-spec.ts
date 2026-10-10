@@ -254,6 +254,28 @@ describe('Dashboard (e2e)', () => {
       { label: '2026-08-02', income: '0.00', expense: '0.00' },
       { label: '2026-08-03', income: '0.00', expense: '0.00' },
     ]);
+    const weekly = await request(server)
+      .get(
+        '/api/v1/dashboard/cash-flow?from=2026-08-01&to=2026-08-31&granularity=week',
+      )
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(200);
+    expect((weekly.body as CashFlowBody).data).toEqual(
+      expect.arrayContaining([
+        { label: '2026-07-27', income: '200.00', expense: '0.00' },
+        { label: '2026-08-10', income: '0.00', expense: '50.00' },
+      ]),
+    );
+    const monthly = await request(server)
+      .get(
+        '/api/v1/dashboard/cash-flow?from=2026-07-01&to=2026-08-31&granularity=month',
+      )
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(200);
+    expect((monthly.body as CashFlowBody).data).toEqual([
+      { label: '2026-07', income: '100.00', expense: '0.00' },
+      { label: '2026-08', income: '200.00', expense: '75.00' },
+    ]);
     await request(server)
       .get('/api/v1/dashboard/cash-flow?from=2026-08-04&to=2026-08-01')
       .set('Authorization', `Bearer ${tokenA}`)

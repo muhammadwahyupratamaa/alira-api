@@ -2,6 +2,7 @@
 import { NotFoundException } from '@nestjs/common';
 import { CategoryType, Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../infrastructure/prisma/prisma.service';
+import { CashFlowGranularity } from './dto/dashboard-query.dto';
 import { DashboardService } from './dashboard.service';
 
 const decimal = (value: string): Prisma.Decimal => new Prisma.Decimal(value);
@@ -12,6 +13,7 @@ describe('DashboardService', () => {
     account: { findFirst: jest.fn(), findMany: jest.fn() },
     transaction: { groupBy: jest.fn(), findMany: jest.fn() },
     category: { findMany: jest.fn() },
+    $queryRaw: jest.fn(),
   } as unknown as PrismaService;
   let service: DashboardService;
 
@@ -120,5 +122,26 @@ describe('DashboardService', () => {
     await expect(
       service.summary('user', { accountId: 'other' }),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('uses database aggregation for cash-flow buckets', async () => {
+    jest
+      .mocked(prisma.$queryRaw)
+      .mockResolvedValue([
+        { label: '2026-08-03', income: '200.00', expense: '50.00' },
+      ] as never);
+
+    const result = await service.cashFlow('user', {
+      from: '2026-08-01',
+      to: '2026-08-09',
+      granularity: CashFlowGranularity.WEEK,
+    });
+    expect(result.data).toContainEqual({
+      label: '2026-08-03',
+      income: '200.00',
+      expense: '50.00',
+    });
+    expect(prisma.transaction.findMany).not.toHaveBeenCalled();
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
   });
 });

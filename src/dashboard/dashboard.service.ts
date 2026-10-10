@@ -11,9 +11,10 @@ import {
   nextDateUtcStart,
 } from '../transactions/transaction-date.util';
 import { dashboardPeriod } from './dashboard-period.util';
-import { bucketLabel, cashFlowBuckets } from './cash-flow.util';
+import { cashFlowBuckets } from './cash-flow.util';
 import {
   CashFlowQueryDto,
+  CashFlowGranularity,
   CategoryBreakdownQueryDto,
   DashboardPeriodQueryDto,
   RecentTransactionsQueryDto,
@@ -27,6 +28,16 @@ import {
 } from './dto/dashboard-response.dto';
 
 const ZERO = new Prisma.Decimal(0);
+const CASH_FLOW_TRUNCATION: Record<CashFlowGranularity, Prisma.Sql> = {
+  [CashFlowGranularity.DAY]: Prisma.raw("'day'"),
+  [CashFlowGranularity.WEEK]: Prisma.raw("'week'"),
+  [CashFlowGranularity.MONTH]: Prisma.raw("'month'"),
+};
+const CASH_FLOW_LABEL_FORMAT: Record<CashFlowGranularity, Prisma.Sql> = {
+  [CashFlowGranularity.DAY]: Prisma.raw("'YYYY-MM-DD'"),
+  [CashFlowGranularity.WEEK]: Prisma.raw("'YYYY-MM-DD'"),
+  [CashFlowGranularity.MONTH]: Prisma.raw("'YYYY-MM'"),
+};
 
 @Injectable()
 export class DashboardService {
@@ -209,27 +220,40 @@ export class DashboardService {
       throw new BadRequestException('Future dates are not allowed');
     const start = dateOnlyToUtcStart(query.from, timeZone);
     const end = nextDateUtcStart(query.to, timeZone);
-    const transactions = await this.prisma.transaction.findMany({
-      where: {
-        userId,
-        deletedAt: null,
-        transactionDate: { gte: start, lt: end },
-      },
-      select: { type: true, amount: true, transactionDate: true },
-    });
+    const totalsByBucket = await this.prisma.$queryRaw<
+      { label: string; income: string; expense: string }[]
+    >(Prisma.sql`
+      SELECT
+        to_char(
+          date_trunc(
+            ${CASH_FLOW_TRUNCATION[query.granularity]},
+            ("transactionDate" AT TIME ZONE 'UTC') AT TIME ZONE ${timeZone}
+          ),
+          ${CASH_FLOW_LABEL_FORMAT[query.granularity]}
+        ) AS "label",
+        COALESCE(
+          SUM("amount") FILTER (WHERE "type" = ${CategoryType.INCOME}),
+          0
+        )::numeric(19, 2)::text AS "income",
+        COALESCE(
+          SUM("amount") FILTER (WHERE "type" = ${CategoryType.EXPENSE}),
+          0
+        )::numeric(19, 2)::text AS "expense"
+      FROM ${Prisma.raw(`"${this.prisma.databaseSchema}"."Transaction"`)}
+      WHERE "userId" = ${userId}::uuid
+        AND "deletedAt" IS NULL
+        AND "transactionDate" >= ${start}
+        AND "transactionDate" < ${end}
+      GROUP BY 1
+    `);
     const totals = new Map(
       labels.map((label) => [label, { income: ZERO, expense: ZERO }]),
     );
-    for (const transaction of transactions) {
-      const label = bucketLabel(
-        formatInTimeZone(transaction.transactionDate, timeZone),
-        query.granularity,
-      );
-      const total = totals.get(label);
+    for (const row of totalsByBucket) {
+      const total = totals.get(row.label);
       if (!total) continue;
-      if (transaction.type === CategoryType.INCOME)
-        total.income = total.income.plus(transaction.amount);
-      else total.expense = total.expense.plus(transaction.amount);
+      total.income = new Prisma.Decimal(row.income);
+      total.expense = new Prisma.Decimal(row.expense);
     }
     return {
       from: query.from,
