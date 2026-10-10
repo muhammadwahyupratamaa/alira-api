@@ -9,7 +9,7 @@ const databaseUrl = new URL(
 );
 databaseUrl.searchParams.set('schema', 'auth_e2e');
 process.env.DATABASE_URL = databaseUrl.toString();
-process.env.CORS_ORIGIN = 'http://localhost:5173';
+process.env.FRONTEND_ORIGIN = 'http://localhost:5173';
 process.env.SWAGGER_ENABLED = 'false';
 process.env.JWT_ACCESS_SECRET = 'test-access-secret-at-least-32-characters';
 process.env.JWT_ACCESS_TTL_SECONDS = '900';

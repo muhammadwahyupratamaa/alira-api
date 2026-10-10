@@ -6,7 +6,7 @@ import { OriginGuard } from './origin.guard';
 describe('OriginGuard', () => {
   const configService = {
     getOrThrow: jest.fn().mockReturnValue({
-      corsOrigins: ['http://localhost:5173'],
+      frontendOrigin: 'http://localhost:5173',
     }),
   } as unknown as ConfigService;
   const guard = new OriginGuard(configService);

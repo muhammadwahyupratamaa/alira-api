@@ -106,6 +106,7 @@ export class AuthController {
   @Post('logout')
   @HttpCode(HttpStatus.NO_CONTENT)
   @UseGuards(OriginGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @ApiCookieAuth()
   @ApiOperation({ summary: 'Revoke the current refresh session' })
   @ApiResponse({ status: 204, description: 'Session revoked' })
@@ -121,7 +122,10 @@ export class AuthController {
 
   @Post('logout-all')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @UseGuards(JwtAuthGuard)
+  // Bearer tokens are not automatically attached cross-site, unlike refresh
+  // cookies. Origin validation still protects browser clients consistently.
+  @UseGuards(JwtAuthGuard, OriginGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Revoke every refresh session for the user' })
   @ApiResponse({ status: 204, description: 'All sessions revoked' })

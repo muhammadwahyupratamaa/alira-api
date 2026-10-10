@@ -5,7 +5,7 @@ export interface EnvironmentVariables {
   PORT: number;
   API_PREFIX: string;
   DATABASE_URL: string;
-  CORS_ORIGIN: string;
+  FRONTEND_ORIGIN: string;
   SWAGGER_ENABLED: boolean;
   JWT_ACCESS_SECRET: string;
   JWT_ACCESS_TTL_SECONDS: number;
@@ -27,7 +27,17 @@ const environmentSchema = Joi.object({
   DATABASE_URL: Joi.string()
     .uri({ scheme: ['postgresql', 'postgres'] })
     .required(),
-  CORS_ORIGIN: Joi.string().trim().min(1).required(),
+  FRONTEND_ORIGIN: Joi.string()
+    .trim()
+    .custom((value, helpers) => {
+      try {
+        if (new URL(value).origin !== value) return helpers.error('any.invalid');
+      } catch {
+        return helpers.error('any.invalid');
+      }
+      return value;
+    })
+    .required(),
   SWAGGER_ENABLED: Joi.boolean().truthy('true').falsy('false').default(false),
   JWT_ACCESS_SECRET: Joi.string().min(32).required(),
   JWT_ACCESS_TTL_SECONDS: Joi.number().integer().positive().default(900),

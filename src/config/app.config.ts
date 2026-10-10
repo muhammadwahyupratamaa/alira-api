@@ -4,7 +4,7 @@ export interface AppConfig {
   nodeEnv: string;
   port: number;
   apiPrefix: string;
-  corsOrigins: string[];
+  frontendOrigin: string;
   swaggerEnabled: boolean;
   refreshCookieName: string;
   cookieSecure: boolean;
@@ -17,10 +17,7 @@ export default registerAs(
     nodeEnv: process.env.NODE_ENV ?? 'development',
     port: Number(process.env.PORT ?? 3000),
     apiPrefix: process.env.API_PREFIX ?? 'api/v1',
-    corsOrigins: (process.env.CORS_ORIGIN ?? '')
-      .split(',')
-      .map((origin) => origin.trim())
-      .filter(Boolean),
+    frontendOrigin: process.env.FRONTEND_ORIGIN ?? '',
     swaggerEnabled: process.env.SWAGGER_ENABLED === 'true',
     refreshCookieName: process.env.REFRESH_COOKIE_NAME ?? 'alira_refresh',
     cookieSecure: process.env.COOKIE_SECURE === 'true',
